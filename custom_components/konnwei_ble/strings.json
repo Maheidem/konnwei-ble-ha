@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Confirm KONNWEI Device",
+        "description": "Found KONNWEI battery monitor: {name}. Do you want to add it?"
+      },
+      "user": {
+        "title": "Select KONNWEI Device",
+        "description": "Choose a discovered KONNWEI battery monitor to add.",
+        "data": {
+          "address": "Device"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "no_devices_found": "No KONNWEI devices found. Make sure the monitor is powered on and in Bluetooth range."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KONNWEI Options",
+        "data": {
+          "update_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "voltage": {
+        "name": "Voltage"
+      },
+      "cca": {
+        "name": "Cold Cranking Amps"
+      },
+      "resistance": {
+        "name": "Internal Resistance"
+      },
+      "health": {
+        "name": "Battery Health"
+      },
+      "charge": {
+        "name": "Battery Charge"
+      },
+      "battery_status": {
+        "name": "Battery Status",
+        "state": {
+          "unknown": "Unknown",
+          "good": "Good",
+          "fair": "Fair",
+          "low": "Low",
+          "error": "Error"
+        }
+      }
+    }
+  }
+}

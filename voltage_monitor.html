@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KONNWEI Voltage Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 10px; font-size: 1.4em; color: #64ffda; }
+  .stats {
+    display: flex; justify-content: center; gap: 30px; margin: 15px 0;
+    flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat .value { font-size: 2.2em; font-weight: bold; font-variant-numeric: tabular-nums; }
+  .stat .label { font-size: 0.8em; color: #888; text-transform: uppercase; }
+  .volt { color: #64ffda; }
+  .health { color: #7c4dff; }
+  .charge { color: #ffd740; }
+  .cca { color: #ff6e40; }
+  .resist { color: #40c4ff; }
+  #chart-container { max-width: 900px; margin: 10px auto; position: relative; height: 300px; }
+  .controls { text-align: center; margin: 15px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: #64ffda; color: #1a1a2e; border: none; padding: 12px 24px;
+    border-radius: 6px; font-size: 0.95em; font-weight: bold; cursor: pointer;
+  }
+  button:hover { background: #4dd0b8; }
+  button:disabled { background: #444; color: #888; cursor: default; }
+  .btn-danger { background: #ff5252; }
+  .btn-danger:hover { background: #ff1744; }
+  #status { text-align: center; color: #888; font-size: 0.85em; margin-top: 8px; }
+  #log {
+    max-width: 900px; margin: 15px auto; background: #0d0d1a; border: 1px solid #333;
+    border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.75em;
+    color: #aaa; max-height: 150px; overflow-y: auto;
+  }
+  #log .err { color: #ff5252; }
+  #log .ok { color: #64ffda; }
+  #log .warn { color: #ffd740; }
+</style>
+</head>
+<body>
+
+<h1>KONNWEI BLE Voltage Monitor</h1>
+
+<div class="stats">
+  <div class="stat"><div class="value volt" id="v-voltage">--</div><div class="label">Voltage (V)</div></div>
+  <div class="stat"><div class="value charge" id="v-charge">--</div><div class="label">Charge %</div></div>
+  <div class="stat"><div class="value health" id="v-health">--</div><div class="label">Health %</div></div>
+  <div class="stat"><div class="value cca" id="v-cca">--</div><div class="label">CCA (A)</div></div>
+  <div class="stat"><div class="value resist" id="v-resist">--</div><div class="label">Resistance</div></div>
+</div>
+
+<div id="chart-container"><canvas id="chart"></canvas></div>
+
+<div class="controls">
+  <button id="btn-connect" onclick="connectDevice()">Connect to KONNWEI</button>
+  <button id="btn-test" onclick="runTest()" disabled>Run Battery Test</button>
+  <button id="btn-disconnect" onclick="disconnectDevice()" disabled>Disconnect</button>
+  <button id="btn-forget" class="btn-danger" onclick="forgetDevice()">Forget Device</button>
+</div>
+<div id="status">Click Connect to start</div>
+<div id="log"></div>
+
+<script>
+// --- KONNWEI Protocol (ported from protocol.py) ---
+
+const FCSTAB = [
+  0,4489,8978,12955,17956,22445,25910,29887,
+  35912,40385,44890,48851,51820,56293,59774,63735,
+  4225,264,13203,8730,22181,18220,30135,25662,
+  40137,36160,49115,44626,56045,52068,63999,59510,
+  8450,12427,528,5017,26406,30383,17460,21949,
+  44362,48323,36440,40913,60270,64231,51324,55797,
+  12675,8202,4753,792,30631,26158,21685,17724,
+  48587,44098,40665,36688,64495,60006,55549,51572,
+  16900,21389,24854,28831,1056,5545,10034,14011,
+  52812,57285,60766,64727,34920,39393,43898,47859,
+  21125,17164,29079,24606,5281,1320,14259,9786,
+  57037,53060,64991,60502,39145,35168,48123,43634,
+  25350,29327,16404,20893,9506,13483,1584,6073,
+  61262,65223,52316,56789,43370,47331,35448,39921,
+  29575,25102,20629,16668,13731,9258,5809,1848,
+  65487,60998,56541,52564,47595,43106,39673,35696,
+  33800,38273,42778,46739,49708,54181,57662,61623,
+  2112,6601,11090,15067,20068,24557,28022,31999,
+  38025,34048,47003,42514,53933,49956,61887,57398,
+  6337,2376,15315,10842,24293,20332,32247,27774,
+  42250,46211,34328,38801,58158,62119,49212,53685,
+  10562,14539,2640,7129,28518,32495,19572,24061,
+  46475,41986,38553,34576,62383,57894,53437,49460,
+  14787,10314,6865,2904,32743,28270,23797,19836,
+  50700,55173,58654,62615,32808,37281,41786,45747,
+  19012,23501,26966,30943,3168,7657,12146,16123,
+  54925,50948,62879,58390,37033,33056,46011,41522,
+  23237,19276,31191,26718,7393,3432,16371,11898,
+  59150,63111,50204,54677,41258,45219,33336,37809,
+  27462,31439,18516,23005,11618,15595,3696,8185,
+  63375,58886,54429,50452,45483,40994,37561,33584,
+  31687,27214,22741,18780,15843,11370,7921,3960
+];
+
+function crc16x25(data) {
+  let fcs = 0xFFFF;
+  for (const b of data) fcs = ((fcs >> 8) ^ FCSTAB[(b ^ fcs) & 0xFF]) & 0xFFFF;
+  return 0xFFFF ^ fcs;
+}
+
+function buildPacket(cmd, data = []) {
+  const totalLen = 10 + data.length;
+  const payload = [0x40, 0x40, totalLen & 0xFF, (totalLen >> 8) & 0xFF, (cmd >> 8) & 0xFF, cmd & 0xFF, ...data];
+  const crc = crc16x25(payload);
+  return new Uint8Array([...payload, crc & 0xFF, (crc >> 8) & 0xFF, 0x0D, 0x0A]);
+}
+
+function toHex(arr) { return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join(''); }
+
+// --- BLE State ---
+const SVC_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
+const CHR_NOTIFY_UUID = '0000fff1-0000-1000-8000-00805f9b34fb';
+const CHR_WRITE_UUID = '0000fff2-0000-1000-8000-00805f9b34fb';
+let device, server, writeChar, notifyChar, pollTimer, buffer = [];
+let waveformMode = false;  // true = streaming raw voltage, false = framed packets
+let maxVoltage = 3600;     // from 4204 config, centvolts (36V)
+let lastVoltage = null;
+let sampleCount = 0;
+
+// --- Debug Log ---
+const logEl = document.getElementById('log');
+function log(msg, cls = '') {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// --- Chart ---
+const MAX_POINTS = 120;
+const timestamps = [], voltages = [];
+const chart = new Chart(document.getElementById('chart'), {
+  type: 'line',
+  data: {
+    labels: timestamps,
+    datasets: [{
+      label: 'Voltage (V)',
+      data: voltages,
+      borderColor: '#64ffda',
+      backgroundColor: 'rgba(100,255,218,0.1)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 0,
+      borderWidth: 2
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 200 },
+    scales: {
+      x: { ticks: { color: '#666', maxTicksLimit: 10 }, grid: { color: '#333' } },
+      y: { ticks: { color: '#888' }, grid: { color: '#333' },
+           title: { display: true, text: 'Volts', color: '#888' } }
+    },
+    plugins: { legend: { display: false } }
+  }
+});
+
+function addPoint(v) {
+  const t = new Date().toLocaleTimeString();
+  timestamps.push(t);
+  voltages.push(v);
+  if (timestamps.length > MAX_POINTS) { timestamps.shift(); voltages.shift(); }
+  chart.update();
+}
+
+// --- BLE ---
+function status(msg) { document.getElementById('status').textContent = msg; }
+
+function onNotify(event) {
+  const data = new Uint8Array(event.target.value.buffer);
+
+  if (waveformMode) {
+    // Waveform streaming: raw LE uint16 samples, NO framing (no 2424/4040 headers)
+    for (let i = 0; i + 1 < data.length; i += 2) {
+      const raw = data[i] | (data[i+1] << 8);
+      if (raw > 0 && raw <= maxVoltage) {
+        lastVoltage = raw / 100;
+        sampleCount++;
+      }
+    }
+    return;
+  }
+
+  // Framed packet mode: accumulate until 0D 0A terminator
+  buffer.push(...data);
+  while (true) {
+    const termIdx = buffer.findIndex((b, i) => i > 0 && buffer[i-1] === 0x0D && b === 0x0A);
+    if (termIdx < 0) break;
+    const pkt = buffer.splice(0, termIdx + 1);
+    log(`<< ${toHex(pkt)}`);
+    parseResponse(pkt);
+  }
+}
+
+function parseResponse(pkt) {
+  if (pkt.length < 9) return;
+  if (pkt[0] !== 0x24 || pkt[1] !== 0x24) return;
+  const cmd = (pkt[4] << 8) | pkt[5];
+
+  if (cmd === 0x4100) {
+    log('Init ACK received', 'ok');
+  } else if (cmd === 0x4204 && pkt.length >= 9) {
+    maxVoltage = pkt[7] | (pkt[8] << 8);
+    log(`Device config: maxVoltage=${maxVoltage} (${maxVoltage/100}V)`, 'ok');
+  } else if (cmd === 0x4501 && pkt.length >= 7) {
+    const st = pkt[6];
+    if (st === 0x00) {
+      log('Waveform ACK: streaming started', 'ok');
+      waveformMode = true;  // switch notify handler to raw sample mode
+    } else {
+      log(`Waveform ACK: FAILED (status=${st})`, 'err');
+    }
+  } else if (cmd === 0x4502) {
+    log('Waveform stopped', 'ok');
+    waveformMode = false;  // switch back to framed packet mode
+  } else if (cmd === 0x4602 && pkt.length >= 17) {
+    const voltage = (pkt[7] << 8 | pkt[6]) / 100;
+    const cca = pkt[9] << 8 | pkt[8];
+    const resistance = (pkt[11] << 8 | pkt[10]) / 100;
+    const health = pkt[12];
+    const charge = pkt[13];
+    document.getElementById('v-cca').textContent = cca;
+    document.getElementById('v-health').textContent = health + '%';
+    document.getElementById('v-charge').textContent = charge + '%';
+    document.getElementById('v-resist').textContent = resistance.toFixed(2) + ' m\u03A9';
+    log(`Test result: ${voltage.toFixed(2)}V CCA:${cca} Health:${health}%`, 'ok');
+  } else {
+    log(`Response cmd=${cmd.toString(16)}`);
+  }
+}
+
+async function forgetDevice() {
+  // Forget all previously paired KONNWEI devices
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    for (const d of devices) {
+      if (d.name && d.name.toUpperCase().includes('KONNWEI')) {
+        log(`Forgetting paired device: ${d.name} (${d.id})`);
+        if (d.gatt.connected) d.gatt.disconnect();
+        await d.forget();
+      }
+    }
+    device = null; server = null; writeChar = null;
+    log('All KONNWEI pairings cleared', 'ok');
+    status('Device forgotten. Click Connect for fresh pairing.');
+  } catch(e) {
+    log(`Forget error: ${e.message}`, 'err');
+    status('Could not forget device: ' + e.message);
+  }
+}
+
+async function connectDevice() {
+  try {
+    // Step 1: Clear any stale pairing first
+    log('Clearing stale pairings...');
+    try {
+      const cached = await navigator.bluetooth.getDevices();
+      for (const d of cached) {
+        if (d.name && d.name.toUpperCase().includes('KONNWEI')) {
+          log(`Found cached device: ${d.name}, connected=${d.gatt.connected}`, 'warn');
+          if (d.gatt.connected) {
+            d.gatt.disconnect();
+            log('Disconnected stale GATT');
+          }
+          await d.forget();
+          log('Forgot stale pairing', 'ok');
+        }
+      }
+    } catch(e) {
+      log(`getDevices not supported or failed: ${e.message}`, 'warn');
+    }
+
+    // Step 2: Fresh device scan (no cached pairing)
+    status('Scanning for KONNWEI...');
+    log('Opening BLE device picker (select your KONNWEI)...');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'KONNWEI' }],
+      optionalServices: [SVC_UUID]
+    });
+    log(`Selected: ${device.name} (${device.id})`, 'ok');
+
+    device.addEventListener('gattserverdisconnected', () => {
+      stopPolling();
+      log('GATT disconnected event fired', 'warn');
+      status('Disconnected');
+      document.getElementById('btn-connect').disabled = false;
+      document.getElementById('btn-disconnect').disabled = true;
+      document.getElementById('btn-test').disabled = true;
+    });
+
+    // Step 3: GATT connect with timeout + retry
+    // Key insight: this BLE chip (CEVA RivieraWaves) drops connections fast.
+    // We must chain connect → service discovery with ZERO delay.
+    // If it drops, we retry immediately — the device re-advertises quickly.
+    let svc;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        status(`GATT connecting (${attempt}/5)...`);
+        log(`GATT connect attempt ${attempt}...`);
+
+        // Connect with timeout
+        server = await Promise.race([
+          device.gatt.connect(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('GATT connect timeout (10s)')), 10000))
+        ]);
+        log(`GATT connected=${server.connected}, racing to discover services...`);
+
+        // NO DELAY — immediately discover services before device drops us
+        svc = await server.getPrimaryService(SVC_UUID);
+        log(`Service FFF0 found`);
+        notifyChar = await svc.getCharacteristic(CHR_NOTIFY_UUID);
+        log(`Notify char FFF1 found`);
+        writeChar = await svc.getCharacteristic(CHR_WRITE_UUID);
+        log(`Write char FFF2 found`, 'ok');
+        break;
+      } catch(e) {
+        log(`Attempt ${attempt} failed: ${e.message}`, 'err');
+        if (attempt === 5) throw e;
+        try { device.gatt.disconnect(); } catch(_) {}
+        // Short pause — just enough for device to start advertising again
+        const delay = attempt < 3 ? 500 : 1500;
+        status(`Retry in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+
+    // Step 4: Enable notifications
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+    log('Notifications enabled on FFF1', 'ok');
+
+    // Step 5: Init handshake
+    const initPkt = buildPacket(0x0100);
+    log(`>> INIT: ${toHex(initPkt)}`);
+    await writeChar.writeValueWithoutResponse(initPkt);
+    await new Promise(r => setTimeout(r, 500));
+
+    // Step 6: Get device config (maxVoltage for sample filtering)
+    const cfgPkt = buildPacket(0x0204);
+    log(`>> DEVICE CONFIG: ${toHex(cfgPkt)}`);
+    await writeChar.writeValueWithoutResponse(cfgPkt);
+    await new Promise(r => setTimeout(r, 500));
+
+    // Step 7: Get last test result (for CCA/health/charge/resistance display)
+    const testPkt = buildPacket(0x0602);
+    log(`>> QUICK TEST (one-time for stats): ${toHex(testPkt)}`);
+    await writeChar.writeValueWithoutResponse(testPkt);
+    await new Promise(r => setTimeout(r, 500));
+
+    // Step 8: Start waveform streaming (LIVE voltage at 1000ms intervals)
+    // Using 1000ms (0xe803 LE) for 1 sample/sec chart updates
+    const interval = 1000;  // ms
+    const intervalLE = [interval & 0xFF, (interval >> 8) & 0xFF];
+    const wavePkt = buildPacket(0x0501, intervalLE);
+    log(`>> WAVEFORM START (${interval}ms): ${toHex(wavePkt)}`);
+    await writeChar.writeValueWithoutResponse(wavePkt);
+
+    // Step 9: Update chart every 1s with latest waveform sample
+    sampleCount = 0;
+    pollTimer = setInterval(() => {
+      if (lastVoltage !== null) {
+        document.getElementById('v-voltage').textContent = lastVoltage.toFixed(2);
+        addPoint(lastVoltage);
+        status(`Live: ${lastVoltage.toFixed(2)}V (${sampleCount} samples) @ ${new Date().toLocaleTimeString()}`);
+      }
+    }, 1000);
+
+    document.getElementById('btn-connect').disabled = true;
+    document.getElementById('btn-disconnect').disabled = false;
+    document.getElementById('btn-test').disabled = false;
+    status('Connected - waveform streaming');
+    log('Waveform mode active', 'ok');
+
+  } catch(e) {
+    log(`FATAL: ${e.message}`, 'err');
+    status('Error: ' + e.message);
+    try { if (device) device.gatt.disconnect(); } catch(_) {}
+  }
+}
+
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+async function runTest() {
+  if (!writeChar) { status('Not connected'); return; }
+  try {
+    // Stop waveform, run a real test, then restart waveform
+    log('Stopping waveform for test...');
+    waveformMode = false;
+    await writeChar.writeValueWithoutResponse(buildPacket(0x0502));
+    await new Promise(r => setTimeout(r, 500));
+
+    // 0601 = start real test on device
+    log('>> START TEST (0601)');
+    await writeChar.writeValueWithoutResponse(buildPacket(0x0601));
+    status('Running battery test...');
+    await new Promise(r => setTimeout(r, 5000));
+
+    // 0602 = get fresh result
+    log('>> GET RESULT (0602)');
+    await writeChar.writeValueWithoutResponse(buildPacket(0x0602));
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Restart waveform
+    const interval = 1000;
+    const intervalLE = [interval & 0xFF, (interval >> 8) & 0xFF];
+    log('>> Restarting waveform...');
+    await writeChar.writeValueWithoutResponse(buildPacket(0x0501, intervalLE));
+    status('Test done, waveform resumed');
+  } catch(e) {
+    log(`Test error: ${e.message}`, 'err');
+  }
+}
+
+async function disconnectDevice() {
+  stopPolling();
+  // Stop waveform stream cleanly
+  if (writeChar && device && device.gatt.connected) {
+    try {
+      log('>> WAVEFORM STOP');
+      await writeChar.writeValueWithoutResponse(buildPacket(0x0502));
+      await new Promise(r => setTimeout(r, 300));
+    } catch(_) {}
+  }
+  waveformMode = false;
+  if (notifyChar) {
+    try { await notifyChar.stopNotifications(); } catch(_) {}
+  }
+  if (device && device.gatt.connected) device.gatt.disconnect();
+  log('Disconnected by user');
+  status('Disconnected');
+  document.getElementById('btn-connect').disabled = false;
+  document.getElementById('btn-disconnect').disabled = true;
+}
+</script>
+</body>
+</html>

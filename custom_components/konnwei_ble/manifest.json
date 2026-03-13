@@ -1,0 +1,15 @@
+{
+  "domain": "konnwei_ble",
+  "name": "KONNWEI BLE Battery Monitor",
+  "bluetooth": [
+    {"local_name": "KONNWEI*", "manufacturer_id": 19522},
+    {"local_name": "KONNWEI*"}
+  ],
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": ["bleak-retry-connector>=3.5.0"],
+  "version": "1.0.0"
+}
