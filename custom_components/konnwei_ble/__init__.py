@@ -25,7 +25,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     update_interval = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
 
     coordinator = KonnweiCoordinator(hass, address, update_interval)
-    await coordinator.async_config_entry_first_refresh()
+
+    # Don't block setup if device is out of range — sensors start as "unavailable"
+    # and populate once the device is reachable on the next poll cycle.
+    await coordinator.async_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 

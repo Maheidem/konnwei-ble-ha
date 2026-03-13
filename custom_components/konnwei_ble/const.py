@@ -29,5 +29,5 @@ WAVEFORM_INTERVAL = 1000  # ms between samples (1 sample/sec)
 WAVEFORM_COLLECT_TIME = 3  # seconds to collect live voltage samples
 
 # Timeouts
-CONNECT_TIMEOUT = 15  # seconds
+CONNECT_TIMEOUT = 30  # seconds (KONNWEI BLE has weak signal, needs longer)
 RESPONSE_TIMEOUT = 5  # seconds
