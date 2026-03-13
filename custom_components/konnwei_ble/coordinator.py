@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import Any
 
 from bleak import BleakClient, BleakError
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -142,8 +143,12 @@ class KonnweiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     stop_event.set()
 
         try:
-            client = BleakClient(ble_device, timeout=CONNECT_TIMEOUT)
-            await client.connect()
+            client = await establish_connection(
+                client_class=BleakClient,
+                device=ble_device,
+                name=self.address,
+                max_attempts=3,
+            )
         except (BleakError, TimeoutError, OSError) as err:
             raise UpdateFailed(f"Failed to connect to {self.address}: {err}") from err
 

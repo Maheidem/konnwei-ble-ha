@@ -7,9 +7,9 @@
   ],
   "codeowners": ["@Maheidem"],
   "config_flow": true,
-  "dependencies": ["bluetooth_adapters"],
+  "dependencies": ["bluetooth"],
   "integration_type": "device",
   "iot_class": "local_polling",
-  "requirements": [],
-  "version": "1.0.3"
+  "requirements": ["bleak-retry-connector>=3.5.0"],
+  "version": "1.0.4"
 }
