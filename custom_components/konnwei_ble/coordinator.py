@@ -8,7 +8,7 @@ import struct
 from datetime import timedelta
 from typing import Any
 
-from bleak import BleakError
+from bleak import BleakClient, BleakError
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
@@ -144,7 +144,7 @@ class KonnweiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             client = await establish_connection(
-                client_class=bluetooth.async_get_ble_device_client(ble_device),
+                client_class=BleakClient,
                 device=ble_device,
                 name=self.address,
                 timeout=CONNECT_TIMEOUT,
