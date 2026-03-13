@@ -5,7 +5,7 @@
     {"local_name": "KONNWEI*", "manufacturer_id": 19522},
     {"local_name": "KONNWEI*"}
   ],
-  "codeowners": [],
+  "codeowners": ["@Maheidem"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "integration_type": "device",
